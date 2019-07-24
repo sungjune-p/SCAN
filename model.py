@@ -164,7 +164,7 @@ class EncoderText(nn.Module):
         # Reshape *final* output to (batch_size, hidden_size)
         padded = pad_packed_sequence(out, batch_first=True)
         cap_emb, cap_len = padded
-
+        print('cap_emb : ', cap_emb.shape, 'cap_len : ', cap_len.shape)
         if self.use_bi_gru:
             cap_emb = (cap_emb[:,:,:cap_emb.size(2)/2] + cap_emb[:,:,cap_emb.size(2)/2:])/2
 
@@ -251,39 +251,63 @@ def xattn_score_t2i(images, captions, cap_lens, opt):
     similarities = []
     n_image = images.size(0)
     n_caption = captions.size(0)
-    for i in range(n_caption):
-        # Get the i-th text description
-        n_word = cap_lens[i]
-        cap_i = captions[i, :n_word, :].unsqueeze(0).contiguous()
-        # --> (n_image, n_word, d)
-        cap_i_expand = cap_i.repeat(n_image, 1, 1)
-        """
-            word(query): (n_image, n_word, d)
-            image(context): (n_image, n_regions, d)
-            weiContext: (n_image, n_word, d)
-            attn: (n_image, n_region, n_word)
-        """
-        weiContext, attn = func_attention(cap_i_expand, images, opt, smooth=opt.lambda_softmax)
-        cap_i_expand = cap_i_expand.contiguous()
-        weiContext = weiContext.contiguous()
-        # (n_image, n_word)
-        row_sim = cosine_similarity(cap_i_expand, weiContext, dim=2)
-        if opt.agg_func == 'LogSumExp':
-            row_sim.mul_(opt.lambda_lse).exp_()
-            row_sim = row_sim.sum(dim=1, keepdim=True)
-            row_sim = torch.log(row_sim)/opt.lambda_lse
-        elif opt.agg_func == 'Max':
-            row_sim = row_sim.max(dim=1, keepdim=True)[0]
-        elif opt.agg_func == 'Sum':
-            row_sim = row_sim.sum(dim=1, keepdim=True)
-        elif opt.agg_func == 'Mean':
-            row_sim = row_sim.mean(dim=1, keepdim=True)
-        else:
-            raise ValueError("unknown aggfunc: {}".format(opt.agg_func))
-        similarities.append(row_sim)
+    ##########
+    # for i in range(n_caption):
+    #     # Get the i-th text description
+    #     n_word = cap_lens[i]
+    #     cap_i = captions[i, :n_word, :].unsqueeze(0).contiguous()
+    #     # --> (n_image, n_word, d)
+    #     cap_i_expand = cap_i.repeat(n_image, 1, 1)
+    #     """
+    #         word(query): (n_image, n_word, d)
+    #         image(context): (n_image, n_regions, d)
+    #         weiContext: (n_image, n_word, d)
+    #         attn: (n_image, n_region, n_word)
+    #     """
+    #     weiContext, attn = func_attention(cap_i_expand, images, opt, smooth=opt.lambda_softmax)
+    #     cap_i_expand = cap_i_expand.contiguous()
+    #     weiContext = weiContext.contiguous()
+    #     # (n_image, n_word)
+    #     row_sim = cosine_similarity(cap_i_expand, weiContext, dim=2)
+    #     if opt.agg_func == 'LogSumExp':
+    #         row_sim.mul_(opt.lambda_lse).exp_()
+    #         row_sim = row_sim.sum(dim=1, keepdim=True)
+    #         row_sim = torch.log(row_sim)/opt.lambda_lse
+    #     elif opt.agg_func == 'Max':
+    #         row_sim = row_sim.max(dim=1, keepdim=True)[0]
+    #     elif opt.agg_func == 'Sum':
+    #         row_sim = row_sim.sum(dim=1, keepdim=True)
+    #     elif opt.agg_func == 'Mean':
+    #         row_sim = row_sim.mean(dim=1, keepdim=True)
+    #     else:
+    #         raise ValueError("unknown aggfunc: {}".format(opt.agg_func))
+    #     similarities.append(row_sim)
+
+    n_word = cap_lens
+    cap_i = captions[:n_word, :].unsqueeze(0).contiguous()
+    cap_i_expand = cap_i.repeat(n_image, 1, 1)
+    weiContext, attn = func_attention(cap_i_expand, images, opt, smooth=opt.lambda_softmax)
+    cap_i_expand = cap_i_expand.contiguous()
+    weiContext = weiContext.contiguous()
+    row_sim = cosine_similarity(cap_i_expand, weiContext, dim=2)
+
+    if opt.agg_func == 'LogSumExp':
+        row_sim.mul_(opt.lambda_lse).exp_()
+        row_sim = row_sim.sum(dim=1, keepdim=True)
+        row_sim = torch.log(row_sim)/opt.lambda_lse
+    elif opt.agg_func == 'Max':
+        row_sim = row_sim.max(dim=1, keepdim=True)[0]
+    elif opt.agg_func == 'Sum':
+        row_sim = row_sim.sum(dim=1, keepdim=True)
+    elif opt.agg_func == 'Mean':
+        row_sim = row_sim.mean(dim=1, keepdim=True)
+    else:
+        raise ValueError("unknown aggfunc: {}".format(opt.agg_func))
+    similarities.append(row_sim)
 
     # (n_image, n_caption)
     similarities = torch.cat(similarities, 1)
+
     
     return similarities
 
@@ -342,38 +366,44 @@ class ContrastiveLoss(nn.Module):
         self.margin = margin
         self.max_violation = max_violation
 
-    def forward(self, im, s, s_l):
-        # compute image-sentence score matrix
-        if self.opt.cross_attn == 't2i':
-            scores = xattn_score_t2i(im, s, s_l, self.opt)
-        elif self.opt.cross_attn == 'i2t':
-            scores = xattn_score_i2t(im, s, s_l, self.opt)
-        else:
-            raise ValueError("unknown first norm type:", opt.raw_feature_norm)
-        diagonal = scores.diag().view(im.size(0), 1)
-        d1 = diagonal.expand_as(scores)
-        d2 = diagonal.t().expand_as(scores)
-
-        # compare every diagonal score to scores in its column
-        # caption retrieval
-        cost_s = (self.margin + scores - d1).clamp(min=0)
-        # compare every diagonal score to scores in its row
-        # image retrieval
-        cost_im = (self.margin + scores - d2).clamp(min=0)
-
-        # clear diagonals
-        mask = torch.eye(scores.size(0)) > .5
-        I = Variable(mask)
-        if torch.cuda.is_available():
-            I = I.cuda()
-        cost_s = cost_s.masked_fill_(I, 0)
-        cost_im = cost_im.masked_fill_(I, 0)
-
-        # keep the maximum violating negative for each query
-        if self.max_violation:
-            cost_s = cost_s.max(1)[0]
-            cost_im = cost_im.max(0)[0]
-        return cost_s.sum() + cost_im.sum()
+    # def forward(self, im, s, s_l):
+    #     print("im : " + str(im.shape))
+    #     print("s : " + str(s.shape))
+    #     print("s_l : " + str(s_l.shape))
+    #     # compute image-sentence score matrix
+    #     if self.opt.cross_attn == 't2i':
+    #         scores = xattn_score_t2i(im, s, s_l, self.opt)
+    #     elif self.opt.cross_attn == 'i2t':
+    #         scores = xattn_score_i2t(im, s, s_l, self.opt)
+    #     else:
+    #         raise ValueError("unknown first norm type:", opt.raw_feature_norm)
+    #     # diagonal = scores.diag().view(im.size(0), 1)
+    #     diagonal = scores
+    #     d1 = diagonal.expand_as(scores)
+    #     d2 = diagonal.t().expand_as(scores)
+    #
+    #     # compare every diagonal score to scores in its column
+    #     # caption retrieval
+    #     cost_s = (self.margin + scores - d1).clamp(min=0)
+    #
+    #     # compare every diagonal score to scores in its row
+    #     # image retrieval
+    #     cost_im = (self.margin + scores - d2).clamp(min=0)
+    #
+    #
+    #     # clear diagonals
+    #     mask = torch.eye(scores.size(0)) > .5
+    #     I = Variable(mask)
+    #     if torch.cuda.is_available():
+    #         I = I.cuda()
+    #     cost_s = cost_s.masked_fill_(I, 0)
+    #     cost_im = cost_im.masked_fill_(I, 0)
+    #
+    #     # keep the maximum violating negative for each query
+    #     if self.max_violation:
+    #         cost_s = cost_s.max(1)[0]
+    #         cost_im = cost_im.max(0)[0]
+    #     return cost_s.sum() + cost_im.sum()
 
 
 class SCAN(object):
@@ -445,12 +475,12 @@ class SCAN(object):
         cap_emb, cap_lens = self.txt_enc(captions, lengths)
         return img_emb, cap_emb, cap_lens
 
-    def forward_loss(self, img_emb, cap_emb, cap_len, **kwargs):
-        """Compute the loss given pairs of image and caption embeddings
-        """
-        loss = self.criterion(img_emb, cap_emb, cap_len)
-        self.logger.update('Le', loss.data[0], img_emb.size(0))
-        return loss
+    # def forward_loss(self, img_emb, cap_emb, cap_len, **kwargs):
+    #     """Compute the loss given pairs of image and caption embeddings
+    #     """
+    #     loss = self.criterion(img_emb, cap_emb, cap_len)
+    #     self.logger.update('Le', loss.data, img_emb.size(0))
+    #     return loss
 
     def train_emb(self, images, captions, lengths, ids=None, *args):
         """One training step given images and captions.

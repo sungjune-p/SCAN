@@ -22,6 +22,7 @@ from collections import OrderedDict
 import time
 from torch.autograd import Variable
 
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
@@ -98,7 +99,12 @@ def encode_data(model, data_loader, log_step=10, logging=print):
 
     max_n_word = 0
     for i, (images, captions, lengths, ids) in enumerate(data_loader):
+        #print('len', lengths)      lengths : caption length
+        #print('?', captions.numpy()[0].shape)      == lengths
+        #print('cap', captions)
+        #print('ids', ids)      ids : caption ids
         max_n_word = max(max_n_word, max(lengths))
+
 
     for i, (images, captions, lengths, ids) in enumerate(data_loader):
         # make sure val logger is used
@@ -114,6 +120,7 @@ def encode_data(model, data_loader, log_step=10, logging=print):
                 img_embs = np.zeros((len(data_loader.dataset), img_emb.size(1)))
             cap_embs = np.zeros((len(data_loader.dataset), max_n_word, cap_emb.size(2)))
             cap_lens = [0] * len(data_loader.dataset)
+
         # cache embeddings
         img_embs[ids] = img_emb.data.cpu().numpy().copy()
         cap_embs[ids,:max(lengths),:] = cap_emb.data.cpu().numpy().copy()
@@ -121,7 +128,7 @@ def encode_data(model, data_loader, log_step=10, logging=print):
             cap_lens[nid] = cap_len[j]
 
         # measure accuracy and record loss
-        model.forward_loss(img_emb, cap_emb, cap_len)
+        # model.forward_loss(img_emb, cap_emb, cap_len)
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -166,7 +173,12 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
                                   opt.batch_size, opt.workers, opt)
 
     print('Computing results...')
+    # cap_embs.shape = (5000, 77, 1024)     cap_lens : # of words per each caption (tensor) (It contains <start>:1 and <end>:2)
     img_embs, cap_embs, cap_lens = encode_data(model, data_loader)
+
+    print("cap_embs : ", cap_embs.shape)
+    print("Caption length with start and end index : ", cap_lens[0])
+
     print('Images: %d, Captions: %d' %
           (img_embs.shape[0] / 5, cap_embs.shape[0]))
 
@@ -184,16 +196,34 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         end = time.time()
         print("calculate similarity time:", end-start)
 
-        r, rt = i2t(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
-        ri, rti = t2i(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
-        ar = (r[0] + r[1] + r[2]) / 3
-        ari = (ri[0] + ri[1] + ri[2]) / 3
-        rsum = r[0] + r[1] + r[2] + ri[0] + ri[1] + ri[2]
-        print("rsum: %.1f" % rsum)
-        print("Average i2t Recall: %.1f" % ar)
-        print("Image to text: %.1f %.1f %.1f %.1f %.1f" % r)
-        print("Average t2i Recall: %.1f" % ari)
-        print("Text to image: %.1f %.1f %.1f %.1f %.1f" % ri)
+        top_1 = np.argsort(sims, axis=0)[-1:].flatten()
+        top_3 = np.argsort(sims, axis=0)[-3:][::-1].flatten()
+        top_5 = np.argsort(sims, axis=0)[-5:][::-1].flatten()
+        top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
+
+        # print(top_10.shape)
+        # print(type(top_10))
+        print('top 1 : ' + str(top_1), '\ntop 3 : ' + str(top_3), '\ntop 5 : ' + str(top_5), '\ntop 10 : ' + str(top_10))
+        # print('Image #'+str(sims.argmax(axis=0)[0])+' with the biggest similarity score, '+str(np.max(sims)))
+        # print(sims[int(sims.argmax(axis=0)[0])])
+        # print("similarity : ", sims)
+        # print("sim shape : ", sims.shape)
+        # r, rt = i2t(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
+        # ri, rti = t2i(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
+        # ar = (r[0] + r[1] + r[2]) / 3
+        # ari = (ri[0] + ri[1] + ri[2]) / 3
+        # rsum = r[0] + r[1] + r[2] + ri[0] + ri[1] + ri[2]
+        # print("rsum: %.1f" % rsum)
+        # print("Average i2t Recall: %.1f" % ar)
+        # print("Image to text: %.1f %.1f %.1f %.1f %.1f" % r)
+        # print("Average t2i Recall: %.1f" % ari)
+        # print("Text to image: %.1f %.1f %.1f %.1f %.1f" % ri)
+        # t = i2t(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
+        #ti = t2i(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
+
+        # print("i2t top1", t)
+        #print("t2i top1", ti)
+
     else:
         # 5fold cross-validation, only for MSCOCO
         results = []
@@ -235,7 +265,7 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         print("Text to image: %.1f %.1f %.1f %.1f %.1f" %
               mean_metrics[5:10])
 
-    torch.save({'rt': rt, 'rti': rti}, 'ranks.pth.tar')
+    # torch.save({'rt': rt, 'rti': rti}, 'ranks.pth.tar')
 
 
 def softmax(X, axis):
@@ -258,20 +288,36 @@ def shard_xattn_t2i(images, captions, caplens, opt, shard_size=128):
     """
     Computer pairwise t2i image-caption distance with locality sharding
     """
+    ##########
+    # n_im_shard = (len(images)-1)/shard_size + 1
+    # n_cap_shard = (len(captions)-1)/shard_size + 1
+    #
+    # d = np.zeros((len(images), len(captions)))
+    # for i in range(n_im_shard):
+    #     im_start, im_end = shard_size*i, min(shard_size*(i+1), len(images))
+    #     for j in range(n_cap_shard):
+    #         sys.stdout.write('\r>> shard_xattn_t2i batch (%d,%d)' % (i, j))
+    #         cap_start, cap_end = shard_size * j, min(shard_size * (j + 1), len(captions))
+    #         im = Variable(torch.from_numpy(images[im_start:im_end]), volatile=True).cuda()
+    #         s = Variable(torch.from_numpy(captions[cap_start:cap_end]), volatile=True).cuda()
+    #         l = caplens[cap_start:cap_end]
+    #         sim = xattn_score_t2i(im, s, l, opt)
+    #         d[im_start:im_end, cap_start:cap_end] = sim.data.cpu().numpy()
+    # sys.stdout.write('\n')
+    # return d
+
+
     n_im_shard = (len(images)-1)/shard_size + 1
-    n_cap_shard = (len(captions)-1)/shard_size + 1
-    
-    d = np.zeros((len(images), len(captions)))
+
+    d = np.zeros((len(images), 1))
     for i in range(n_im_shard):
         im_start, im_end = shard_size*i, min(shard_size*(i+1), len(images))
-        for j in range(n_cap_shard):
-            sys.stdout.write('\r>> shard_xattn_t2i batch (%d,%d)' % (i,j))
-            cap_start, cap_end = shard_size*j, min(shard_size*(j+1), len(captions))
-            im = Variable(torch.from_numpy(images[im_start:im_end]), volatile=True).cuda()
-            s = Variable(torch.from_numpy(captions[cap_start:cap_end]), volatile=True).cuda()
-            l = caplens[cap_start:cap_end]
-            sim = xattn_score_t2i(im, s, l, opt)
-            d[im_start:im_end, cap_start:cap_end] = sim.data.cpu().numpy()
+        sys.stdout.write('\r>> shard_xattn_t2i batch (%d)' %i)
+        im = Variable(torch.from_numpy(images[im_start:im_end]), volatile=True).cuda()
+        s = Variable(torch.from_numpy(captions[0]), volatile=True).cuda()
+        l = caplens[0]
+        sim = xattn_score_t2i(im, s, l, opt)
+        d[im_start:im_end] = sim.data.cpu().numpy()
     sys.stdout.write('\n')
     return d
 
@@ -282,7 +328,7 @@ def shard_xattn_i2t(images, captions, caplens, opt, shard_size=128):
     """
     n_im_shard = (len(images)-1)/shard_size + 1
     n_cap_shard = (len(captions)-1)/shard_size + 1
-    
+
     d = np.zeros((len(images), len(captions)))
     for i in range(n_im_shard):
         im_start, im_end = shard_size*i, min(shard_size*(i+1), len(images))
@@ -321,16 +367,16 @@ def i2t(images, captions, caplens, sims, npts=None, return_ranks=False):
         top1[index] = inds[0]
 
     # Compute metrics
-    r1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
-    r5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
-    r10 = 100.0 * len(np.where(ranks < 10)[0]) / len(ranks)
-    medr = np.floor(np.median(ranks)) + 1
-    meanr = ranks.mean() + 1
-    if return_ranks:
-        return (r1, r5, r10, medr, meanr), (ranks, top1)
-    else:
-        return (r1, r5, r10, medr, meanr)
-
+    # r1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
+    # r5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
+    # r10 = 100.0 * len(np.where(ranks < 10)[0]) / len(ranks)
+    # medr = np.floor(np.median(ranks)) + 1
+    # meanr = ranks.mean() + 1
+    # if return_ranks:
+    #     return (r1, r5, r10, medr, meanr), (ranks, top1)
+    # else:
+    #     return (r1, r5, r10, medr, meanr)
+    return top1
 
 def t2i(images, captions, caplens, sims, npts=None, return_ranks=False):
     """
@@ -354,12 +400,13 @@ def t2i(images, captions, caplens, sims, npts=None, return_ranks=False):
             top1[5 * index + i] = inds[0]
 
     # Compute metrics
-    r1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
-    r5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
-    r10 = 100.0 * len(np.where(ranks < 10)[0]) / len(ranks)
-    medr = np.floor(np.median(ranks)) + 1
-    meanr = ranks.mean() + 1
-    if return_ranks:
-        return (r1, r5, r10, medr, meanr), (ranks, top1)
-    else:
-        return (r1, r5, r10, medr, meanr)
+    # r1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
+    # r5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
+    # r10 = 100.0 * len(np.where(ranks < 10)[0]) / len(ranks)
+    # medr = np.floor(np.median(ranks)) + 1
+    # meanr = ranks.mean() + 1
+    # if return_ranks:
+    #     return (r1, r5, r10, medr, meanr), (ranks, top1)
+    # else:
+    #     return (r1, r5, r10, medr, meanr)
+    return top1

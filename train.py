@@ -27,6 +27,11 @@ import tensorboard_logger as tb_logger
 import argparse
 
 
+# Allocate GPUs
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
+
 def main():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
