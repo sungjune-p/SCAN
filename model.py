@@ -164,14 +164,15 @@ class EncoderText(nn.Module):
         # Reshape *final* output to (batch_size, hidden_size)
         padded = pad_packed_sequence(out, batch_first=True)
         cap_emb, cap_len = padded
-        print('cap_emb : ', cap_emb.shape, 'cap_len : ', cap_len.shape)
+        # print('cap_emb : ', cap_emb.shape, 'cap_len : ', cap_len.shape)
+        # cap_emb.shape : (128, 8, 2048) cap_len.shape : (128,)
         if self.use_bi_gru:
             cap_emb = (cap_emb[:,:,:cap_emb.size(2)/2] + cap_emb[:,:,cap_emb.size(2)/2:])/2
 
         # normalization in the joint embedding space
         if not self.no_txtnorm:
             cap_emb = l2norm(cap_emb, dim=-1)
-
+        # cap_emb.shape : (8, 8, 1024)
         return cap_emb, cap_len
 
 
@@ -220,7 +221,7 @@ def func_attention(query, context, opt, smooth, eps=1e-8):
     attn = nn.Softmax()(attn*smooth)
     # --> (batch, queryL, sourceL)
     attn = attn.view(batch_size, queryL, sourceL)
-    # --> (batch, sourceL, queryL)
+    # --> (batch, sourceL, queryL)    ==> (128, image_emb.shape[1], 8)
     attnT = torch.transpose(attn, 1, 2).contiguous()
 
     # --> (batch, d, sourceL)
@@ -228,7 +229,7 @@ def func_attention(query, context, opt, smooth, eps=1e-8):
     # (batch x d x sourceL)(batch x sourceL x queryL)
     # --> (batch, d, queryL)
     weightedContext = torch.bmm(contextT, attnT)
-    # --> (batch, queryL, d)
+    # --> (batch, queryL, d)    ==> (128, 8, 1024)
     weightedContext = torch.transpose(weightedContext, 1, 2)
 
     return weightedContext, attnT
@@ -250,7 +251,7 @@ def xattn_score_t2i(images, captions, cap_lens, opt):
     """
     similarities = []
     n_image = images.size(0)
-    n_caption = captions.size(0)
+    # n_caption = captions.size(0)
     ##########
     # for i in range(n_caption):
     #     # Get the i-th text description

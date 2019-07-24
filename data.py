@@ -39,11 +39,12 @@ class PrecompDataset(data.Dataset):
         # Captions
         self.captions = []
         self.captions.append(raw_input("Text Query : "))
-        self.captions = 5000 * self.captions
+        # self.captions = 5000 * self.captions
 
         # Image features ( self.images.shape = (5000,36,2048), self.length = 5000 )
         self.images = np.load(loc+'%s_ims.npy' % data_split)
-        self.length = len(self.captions)
+        # self.length = len(self.captions)
+        self.length = self.images.shape[0]
 
         # rkiros data has redundancy in images, we divide by 5, 10crop doesn't
         if self.images.shape[0] != self.length:
@@ -66,7 +67,8 @@ class PrecompDataset(data.Dataset):
         #print('index', index)      0, 1, 2, 3, ...
 
         ##########
-        caption = self.captions[index]
+        # caption = self.captions[index]
+        caption = self.captions
 
         #print('caption',caption)      One line of captions
         vocab = self.vocab

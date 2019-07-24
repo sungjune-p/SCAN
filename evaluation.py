@@ -118,14 +118,17 @@ def encode_data(model, data_loader, log_step=10, logging=print):
                 img_embs = np.zeros((len(data_loader.dataset), img_emb.size(1), img_emb.size(2)))
             else:
                 img_embs = np.zeros((len(data_loader.dataset), img_emb.size(1)))
-            cap_embs = np.zeros((len(data_loader.dataset), max_n_word, cap_emb.size(2)))
-            cap_lens = [0] * len(data_loader.dataset)
+            # cap_embs = np.zeros((len(data_loader.dataset), max_n_word, cap_emb.size(2)))
+            cap_embs = np.zeros((1, max_n_word, cap_emb.size(2)))
+            # cap_lens = [0] * len(data_loader.dataset)
+            cap_lens = cap_len[0]
 
         # cache embeddings
         img_embs[ids] = img_emb.data.cpu().numpy().copy()
-        cap_embs[ids,:max(lengths),:] = cap_emb.data.cpu().numpy().copy()
-        for j, nid in enumerate(ids):
-            cap_lens[nid] = cap_len[j]
+        # cap_ems[ids,:max(lengths),:] = cap_emb.data.cpu().numpy.copy()
+        cap_embs[0,:max(lengths),:] = cap_emb[0].data.cpu().numpy().copy()
+        # for j, nid in enumerate(ids):
+        #     cap_lens[nid] = cap_len[j]
 
         # measure accuracy and record loss
         # model.forward_loss(img_emb, cap_emb, cap_len)
@@ -142,6 +145,9 @@ def encode_data(model, data_loader, log_step=10, logging=print):
                         i, len(data_loader), batch_time=batch_time,
                         e_log=str(model.logger)))
         del images, captions
+    cap_lens = cap_lens.data.cpu().numpy().copy()
+    # print(type(img_embs))   # 2198, 36, 1024
+    # print(cap_embs.shape)   # 1, 12, 1024
     return img_embs, cap_embs, cap_lens
 
 
@@ -176,16 +182,21 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     # cap_embs.shape = (5000, 77, 1024)     cap_lens : # of words per each caption (tensor) (It contains <start>:1 and <end>:2)
     img_embs, cap_embs, cap_lens = encode_data(model, data_loader)
 
-    print("cap_embs : ", cap_embs.shape)
-    print("Caption length with start and end index : ", cap_lens[0])
+    # print("cap_embs : ", cap_embs.shape)
+    # cap_embs.shape : (5000, 8, 1024)  ( 8 = caption max length )
+    print("Caption length with start and end index : ", cap_lens)
 
+    # print('Images: %d, Captions: %d' %
+    #       (img_embs.shape[0] / 5, cap_embs.shape[0]))
     print('Images: %d, Captions: %d' %
-          (img_embs.shape[0] / 5, cap_embs.shape[0]))
+           (img_embs.shape[0], cap_embs.shape[0]))
+
 
 
     if not fold5:
         # no cross-validation, full evaluation
-        img_embs = np.array([img_embs[i] for i in range(0, len(img_embs), 5)])
+        # img_embs = np.array([img_embs[i] for i in range(0, len(img_embs), 5)])
+        img_embs = np.array(img_embs)
         start = time.time()
         if opt.cross_attn == 't2i':
             sims = shard_xattn_t2i(img_embs, cap_embs, cap_lens, opt, shard_size=128)
@@ -315,7 +326,7 @@ def shard_xattn_t2i(images, captions, caplens, opt, shard_size=128):
         sys.stdout.write('\r>> shard_xattn_t2i batch (%d)' %i)
         im = Variable(torch.from_numpy(images[im_start:im_end]), volatile=True).cuda()
         s = Variable(torch.from_numpy(captions[0]), volatile=True).cuda()
-        l = caplens[0]
+        l = caplens
         sim = xattn_score_t2i(im, s, l, opt)
         d[im_start:im_end] = sim.data.cpu().numpy()
     sys.stdout.write('\n')
