@@ -16,6 +16,7 @@ import nltk
 from PIL import Image
 import numpy as np
 import json as jsonmod
+import time
 
 ##########
 class PrecompDataset(data.Dataset):
@@ -42,7 +43,12 @@ class PrecompDataset(data.Dataset):
         # self.captions = 5000 * self.captions
 
         # Image features ( self.images.shape = (5000,36,2048), self.length = 5000 )
-        self.images = np.load(loc+'%s_ims.npy' % data_split)
+        start_time = time.time()
+        # self.images = np.load(loc+'%s_ims.npy' % data_split)
+        # self.images = np.load(loc+'testall_ims.npy')
+        self.images = np.load('./out/img_embs.npy')
+        print("%s seconds taken to load npy data" %(time.time()-start_time))
+        # print(".npy file shape : ", self.images.shape)    .npy file shape = (# of images, 36, 2048)
         # self.length = len(self.captions)
         self.length = self.images.shape[0]
 
@@ -63,6 +69,7 @@ class PrecompDataset(data.Dataset):
         # handle the image redundancy
         img_id = index/self.im_div
         image = torch.Tensor(self.images[img_id])
+        # images = torch.Tensor(self.images)
         #print('image', image.numpy().shape)    (36, 2048)
         #print('index', index)      0, 1, 2, 3, ...
 
@@ -91,6 +98,7 @@ class PrecompDataset(data.Dataset):
         #print('caption', caption)      = [1, x, x, x, x, x, ..., x, 2]
         target = torch.Tensor(caption)
         return image, target, index, img_id
+        # return images, target
 
     def __len__(self):
         return self.length
@@ -110,12 +118,13 @@ def collate_fn(data):
     """
     # Sort a data list by caption length
     data.sort(key=lambda x: len(x[1]), reverse=True)
-    images, captions, ids, img_ids = zip(*data)
+    images, captions, ids, image_ids = zip(*data)
+    # images, captions = zip(*data)
 
     # Merge images (convert tuple of 3D tensor to 4D tensor)
     images = torch.stack(images, 0)
 
-    # Merget captions (convert tuple of 1D tensor to 2D tensor)
+    # Merge captions (convert tuple of 1D tensor to 2D tensor)
     lengths = [len(cap) for cap in captions]
     targets = torch.zeros(len(captions), max(lengths)).long()
     for i, cap in enumerate(captions):
@@ -123,6 +132,7 @@ def collate_fn(data):
         targets[i, :end] = cap[:end]
 
     return images, targets, lengths, ids
+    # return images, targets
 
 
 def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,

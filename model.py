@@ -37,7 +37,7 @@ def l2norm(X, dim, eps=1e-8):
     return X
 
 
-def EncoderImage(data_name, img_dim, embed_size, precomp_enc_type='basic', 
+def EncoderImage(img_dim, embed_size, precomp_enc_type='basic',
                  no_imgnorm=False):
     """A wrapper to image encoders. Chooses between an different encoders
     that uses precomputed image features.
@@ -367,45 +367,6 @@ class ContrastiveLoss(nn.Module):
         self.margin = margin
         self.max_violation = max_violation
 
-    # def forward(self, im, s, s_l):
-    #     print("im : " + str(im.shape))
-    #     print("s : " + str(s.shape))
-    #     print("s_l : " + str(s_l.shape))
-    #     # compute image-sentence score matrix
-    #     if self.opt.cross_attn == 't2i':
-    #         scores = xattn_score_t2i(im, s, s_l, self.opt)
-    #     elif self.opt.cross_attn == 'i2t':
-    #         scores = xattn_score_i2t(im, s, s_l, self.opt)
-    #     else:
-    #         raise ValueError("unknown first norm type:", opt.raw_feature_norm)
-    #     # diagonal = scores.diag().view(im.size(0), 1)
-    #     diagonal = scores
-    #     d1 = diagonal.expand_as(scores)
-    #     d2 = diagonal.t().expand_as(scores)
-    #
-    #     # compare every diagonal score to scores in its column
-    #     # caption retrieval
-    #     cost_s = (self.margin + scores - d1).clamp(min=0)
-    #
-    #     # compare every diagonal score to scores in its row
-    #     # image retrieval
-    #     cost_im = (self.margin + scores - d2).clamp(min=0)
-    #
-    #
-    #     # clear diagonals
-    #     mask = torch.eye(scores.size(0)) > .5
-    #     I = Variable(mask)
-    #     if torch.cuda.is_available():
-    #         I = I.cuda()
-    #     cost_s = cost_s.masked_fill_(I, 0)
-    #     cost_im = cost_im.masked_fill_(I, 0)
-    #
-    #     # keep the maximum violating negative for each query
-    #     if self.max_violation:
-    #         cost_s = cost_s.max(1)[0]
-    #         cost_im = cost_im.max(0)[0]
-    #     return cost_s.sum() + cost_im.sum()
-
 
 class SCAN(object):
     """
@@ -414,22 +375,20 @@ class SCAN(object):
     def __init__(self, opt):
         # Build Models
         self.grad_clip = opt.grad_clip
-        self.img_enc = EncoderImage(opt.data_name, opt.img_dim, opt.embed_size,
+        self.img_enc = EncoderImage(opt.img_dim, opt.embed_size,
                                     precomp_enc_type=opt.precomp_enc_type,
                                     no_imgnorm=opt.no_imgnorm)
+
         self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim,
-                                   opt.embed_size, opt.num_layers, 
-                                   use_bi_gru=opt.bi_gru,  
+                                   opt.embed_size, opt.num_layers,
+                                   use_bi_gru=opt.bi_gru,
                                    no_txtnorm=opt.no_txtnorm)
+
         if torch.cuda.is_available():
             self.img_enc.cuda()
             self.txt_enc.cuda()
             cudnn.benchmark = True
 
-        # Loss and Optimizer
-        self.criterion = ContrastiveLoss(opt=opt,
-                                         margin=opt.margin,
-                                         max_violation=opt.max_violation)
         params = list(self.txt_enc.parameters())
         params += list(self.img_enc.fc.parameters())
 
@@ -440,48 +399,24 @@ class SCAN(object):
         self.Eiters = 0
 
     def state_dict(self):
-        state_dict = [self.img_enc.state_dict(), self.txt_enc.state_dict()]
+        state_dict = [None, self.txt_enc.state_dict()]
         return state_dict
 
     def load_state_dict(self, state_dict):
-        self.img_enc.load_state_dict(state_dict[0])
         self.txt_enc.load_state_dict(state_dict[1])
 
-    def train_start(self):
-        """switch to train mode
-        """
-        self.img_enc.train()
-        self.txt_enc.train()
-
-    def val_start(self):
-        """switch to evaluate mode
-        """
-        self.img_enc.eval()
-        self.txt_enc.eval()
-
-    def forward_emb(self, images, captions, lengths, volatile=False):
+    def forward_emb(self, captions, lengths, volatile=False):
         """Compute the image and caption embeddings
         """
         # Set mini-batch dataset
-        images = Variable(images, volatile=volatile)
         captions = Variable(captions, volatile=volatile)
         if torch.cuda.is_available():
-            images = images.cuda()
             captions = captions.cuda()
-
-        # Forward
-        img_emb = self.img_enc(images)
 
         # cap_emb (tensor), cap_lens (list)
         cap_emb, cap_lens = self.txt_enc(captions, lengths)
-        return img_emb, cap_emb, cap_lens
+        return cap_emb, cap_lens
 
-    # def forward_loss(self, img_emb, cap_emb, cap_len, **kwargs):
-    #     """Compute the loss given pairs of image and caption embeddings
-    #     """
-    #     loss = self.criterion(img_emb, cap_emb, cap_len)
-    #     self.logger.update('Le', loss.data, img_emb.size(0))
-    #     return loss
 
     def train_emb(self, images, captions, lengths, ids=None, *args):
         """One training step given images and captions.
@@ -491,14 +426,5 @@ class SCAN(object):
         self.logger.update('lr', self.optimizer.param_groups[0]['lr'])
 
         # compute the embeddings
-        img_emb, cap_emb, cap_lens = self.forward_emb(images, captions, lengths)
+        cap_emb, cap_lens = self.forward_emb(captions, lengths)
 
-        # measure accuracy and record loss
-        self.optimizer.zero_grad()
-        loss = self.forward_loss(img_emb, cap_emb, cap_lens)
-
-        # compute gradient and do SGD step
-        loss.backward()
-        if self.grad_clip > 0:
-            clip_grad_norm(self.params, self.grad_clip)
-        self.optimizer.step()

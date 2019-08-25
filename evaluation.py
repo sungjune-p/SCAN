@@ -21,6 +21,7 @@ from model import SCAN, xattn_score_t2i, xattn_score_i2t
 from collections import OrderedDict
 import time
 from torch.autograd import Variable
+import nltk
 
 
 class AverageMeter(object):
@@ -81,74 +82,28 @@ class LogCollector(object):
             tb_logger.log_value(prefix + k, v.val, step=step)
 
 
-def encode_data(model, data_loader, log_step=10, logging=print):
+def encode_data(model, target, batch_size):
     """Encode all images and captions loadable by `data_loader`
     """
-    batch_time = AverageMeter()
-    val_logger = LogCollector()
-
-    # switch to evaluate mode
-    model.val_start()
-
-    end = time.time()
-
-    # np array to keep all the embeddings
-    img_embs = None
     cap_embs = None
     cap_lens = None
+    max_n_word = len(target[0])
+    lengths = [max_n_word] * batch_size
+    # compute the embeddings
+    cap_emb, cap_len = model.forward_emb(target, lengths, volatile=True)
+    #print(img_emb)
 
-    max_n_word = 0
-    for i, (images, captions, lengths, ids) in enumerate(data_loader):
-        #print('len', lengths)      lengths : caption length
-        #print('?', captions.numpy()[0].shape)      == lengths
-        #print('cap', captions)
-        #print('ids', ids)      ids : caption ids
-        max_n_word = max(max_n_word, max(lengths))
+        # cap_embs = np.zeros((len(data_loader.dataset), max_n_word, cap_emb.size(2)))
+    cap_embs = np.zeros((1, max_n_word, cap_emb.size(2)))
+        # cap_lens = [0] * len(data_loader.dataset)
+    cap_lens = cap_len
 
+    # cache embeddings
+    cap_embs[0,:max(lengths),:] = cap_emb[0].data.cpu().numpy().copy()
 
-    for i, (images, captions, lengths, ids) in enumerate(data_loader):
-        # make sure val logger is used
-        model.logger = val_logger
-
-        # compute the embeddings
-        img_emb, cap_emb, cap_len = model.forward_emb(images, captions, lengths, volatile=True)
-        #print(img_emb)
-        if img_embs is None:
-            if img_emb.dim() == 3:
-                img_embs = np.zeros((len(data_loader.dataset), img_emb.size(1), img_emb.size(2)))
-            else:
-                img_embs = np.zeros((len(data_loader.dataset), img_emb.size(1)))
-            # cap_embs = np.zeros((len(data_loader.dataset), max_n_word, cap_emb.size(2)))
-            cap_embs = np.zeros((1, max_n_word, cap_emb.size(2)))
-            # cap_lens = [0] * len(data_loader.dataset)
-            cap_lens = cap_len[0]
-
-        # cache embeddings
-        img_embs[ids] = img_emb.data.cpu().numpy().copy()
-        # cap_ems[ids,:max(lengths),:] = cap_emb.data.cpu().numpy.copy()
-        cap_embs[0,:max(lengths),:] = cap_emb[0].data.cpu().numpy().copy()
-        # for j, nid in enumerate(ids):
-        #     cap_lens[nid] = cap_len[j]
-
-        # measure accuracy and record loss
-        # model.forward_loss(img_emb, cap_emb, cap_len)
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if i % log_step == 0:
-            logging('Test: [{0}/{1}]\t'
-                    '{e_log}\t'
-                    'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                    .format(
-                        i, len(data_loader), batch_time=batch_time,
-                        e_log=str(model.logger)))
-        del images, captions
     cap_lens = cap_lens.data.cpu().numpy().copy()
-    # print(type(img_embs))   # 2198, 36, 1024
-    # print(cap_embs.shape)   # 1, 12, 1024
-    return img_embs, cap_embs, cap_lens
+
+    return cap_embs, cap_lens
 
 
 def evalrank(model_path, data_path=None, split='dev', fold5=False):
@@ -158,9 +113,11 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     used for evaluation.
     """
     # load model and options
+    s_t = time.time()
     checkpoint = torch.load(model_path)
     opt = checkpoint['opt']
     print(opt)
+    print("%s seconds taken to load checkpoint" %(time.time() - s_t))
     if data_path is not None:
         opt.data_path = data_path
 
@@ -174,14 +131,44 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     # load model state
     model.load_state_dict(checkpoint['model'])
 
-    print('Loading dataset')
-    data_loader = get_test_loader(split, opt.data_name, vocab,
-                                  opt.batch_size, opt.workers, opt)
+    print("Loading npy file")
+    start_time = time.time()
+    img_embs = np.load('./out/img_embs.npy')
+    print("%s seconds takes to load npy file" %(time.time() - start_time))
 
-    print('Computing results...')
+    captions = []
+    captions.append(raw_input("Text Query : "))
+    tokens = nltk.tokenize.word_tokenize(
+        str(captions).lower().decode('utf-8'))
+    caption = []
+    caption.append(vocab('<start>'))
+    caption.extend([vocab(token) for token in tokens])
+    caption.append(vocab('<end>'))
+    target = []
+    for batch in range(opt.batch_size):
+        target.append(caption)
+    target = torch.Tensor(target).long()
+
+
+    # print('Loading dataset')
+    # data_loader = get_test_loader(split, opt.data_name, vocab,
+    #                               opt.batch_size, opt.workers, opt)
+
+    print('Calculating results...')
+    start_time = time.time()
+    cap_embs, cap_len = encode_data(model, target, opt.batch_size)
+    cap_lens = cap_len[0]
+    print('cap_embs', type(cap_embs))
+    print('cap_embs', cap_embs)
+    print('cap_embs.shape', cap_embs.shape)
+    print("%s seconds takes to calculate results" %(time.time() - start_time))
     # cap_embs.shape = (5000, 77, 1024)     cap_lens : # of words per each caption (tensor) (It contains <start>:1 and <end>:2)
-    img_embs, cap_embs, cap_lens = encode_data(model, data_loader)
-
+    # start_time = time.time()
+    # img_embs, cap_embs, cap_lens = encode_data(model, data_loader)
+    # print("img_embs[0][0]", img_embs[0][0])
+    # print("img_embs.shape", img_embs.shape)
+    # print("%s seconds taken to calculate results" %(time.time() - start_time))
+    # print("image_embs.shape : ", img_embs.shape)      img_embs.shape = (# of images, 36, 1024)
     # print("cap_embs : ", cap_embs.shape)
     # cap_embs.shape : (5000, 8, 1024)  ( 8 = caption max length )
     print("Caption length with start and end index : ", cap_lens)
@@ -190,7 +177,6 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     #       (img_embs.shape[0] / 5, cap_embs.shape[0]))
     print('Images: %d, Captions: %d' %
            (img_embs.shape[0], cap_embs.shape[0]))
-
 
 
     if not fold5:
@@ -240,8 +226,8 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         results = []
         for i in range(5):
             img_embs_shard = img_embs[i * 5000:(i + 1) * 5000:5]
-            cap_embs_shard = cap_embs[i * 5000:(i + 1) * 5000]
-            cap_lens_shard = cap_lens[i * 5000:(i + 1) * 5000]
+            cap_embs_shard = cap_embs
+            cap_lens_shard = cap_lens
             start = time.time()
             if opt.cross_attn == 't2i':
                 sims = shard_xattn_t2i(img_embs_shard, cap_embs_shard, cap_lens_shard, opt, shard_size=128)
@@ -252,29 +238,33 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
             end = time.time()
             print("calculate similarity time:", end-start)
 
-            r, rt0 = i2t(img_embs_shard, cap_embs_shard, cap_lens_shard, sims, return_ranks=True)
-            print("Image to text: %.1f, %.1f, %.1f, %.1f, %.1f" % r)
-            ri, rti0 = t2i(img_embs_shard, cap_embs_shard, cap_lens_shard, sims, return_ranks=True)
-            print("Text to image: %.1f, %.1f, %.1f, %.1f, %.1f" % ri)
+            top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
 
-            if i == 0:
-                rt, rti = rt0, rti0
-            ar = (r[0] + r[1] + r[2]) / 3
-            ari = (ri[0] + ri[1] + ri[2]) / 3
-            rsum = r[0] + r[1] + r[2] + ri[0] + ri[1] + ri[2]
-            print("rsum: %.1f ar: %.1f ari: %.1f" % (rsum, ar, ari))
-            results += [list(r) + list(ri) + [ar, ari, rsum]]
+            print("Top 10 list for iteration #%d : " %(i+1) + str(top_10 + 5000*i))
 
-        print("-----------------------------------")
-        print("Mean metrics: ")
-        mean_metrics = tuple(np.array(results).mean(axis=0).flatten())
-        print("rsum: %.1f" % (mean_metrics[10] * 6))
-        print("Average i2t Recall: %.1f" % mean_metrics[11])
-        print("Image to text: %.1f %.1f %.1f %.1f %.1f" %
-              mean_metrics[:5])
-        print("Average t2i Recall: %.1f" % mean_metrics[12])
-        print("Text to image: %.1f %.1f %.1f %.1f %.1f" %
-              mean_metrics[5:10])
+        #     r, rt0 = i2t(img_embs_shard, cap_embs_shard, cap_lens_shard, sims, return_ranks=True)
+        #     print("Image to text: %.1f, %.1f, %.1f, %.1f, %.1f" % r)
+        #     ri, rti0 = t2i(img_embs_shard, cap_embs_shard, cap_lens_shard, sims, return_ranks=True)
+        #     print("Text to image: %.1f, %.1f, %.1f, %.1f, %.1f" % ri)
+        #
+        #     if i == 0:
+        #         rt, rti = rt0, rti0
+        #     ar = (r[0] + r[1] + r[2]) / 3
+        #     ari = (ri[0] + ri[1] + ri[2]) / 3
+        #     rsum = r[0] + r[1] + r[2] + ri[0] + ri[1] + ri[2]
+        #     print("rsum: %.1f ar: %.1f ari: %.1f" % (rsum, ar, ari))
+        #     results += [list(r) + list(ri) + [ar, ari, rsum]]
+        #
+        # print("-----------------------------------")
+        # print("Mean metrics: ")
+        # mean_metrics = tuple(np.array(results).mean(axis=0).flatten())
+        # print("rsum: %.1f" % (mean_metrics[10] * 6))
+        # print("Average i2t Recall: %.1f" % mean_metrics[11])
+        # print("Image to text: %.1f %.1f %.1f %.1f %.1f" %
+        #       mean_metrics[:5])
+        # print("Average t2i Recall: %.1f" % mean_metrics[12])
+        # print("Text to image: %.1f %.1f %.1f %.1f %.1f" %
+        #       mean_metrics[5:10])
 
     # torch.save({'rt': rt, 'rti': rti}, 'ranks.pth.tar')
 
