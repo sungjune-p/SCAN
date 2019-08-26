@@ -9,6 +9,11 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
 start_time = time.time()
-eval.evalrank("runs/coco_scan/log/model_best.pth.tar", data_path="/home/ivy/scan/data", split="test", fold5=True)
+
+# local dir    
+eval.evalrank("runs/coco_scan/log/model_best.pth.tar", data_path="/mnt/hard2/scan_data", split="test", fold5=False)
+# docker dir
+# eval.evalrank("runs/coco_scan/log/model_best.pth.tar", data_path="./data", split="test", fold5=True)
+
 end_time = time.time()
 print("---%s seconds taken to process" %(end_time - start_time))

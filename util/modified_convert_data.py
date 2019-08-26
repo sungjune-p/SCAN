@@ -36,7 +36,8 @@ print(opt)
 if __name__ == '__main__':
     csv.field_size_limit(sys.maxsize)
     FIELDNAMES = ['image_id', 'image_w', 'image_h', 'num_boxes', 'boxes', 'features']
-    input_file = os.path.join(opt.input_dir, 'merged_out.tsv')
+    # input_file = os.path.join(opt.input_dir, 'merged_out.tsv')
+    input_file = opt.input_dir
 
     with open(input_file, "r+b") as tsv_in_file:
         reader = csv.DictReader(tsv_in_file, delimiter='\t', fieldnames = FIELDNAMES)
@@ -83,9 +84,10 @@ if __name__ == '__main__':
     print("Final numpy array shape:", data_out.shape)
     np.save(os.path.join(opt.output_dir, '{}_ims.npy'.format(opt.split)), data_out)
 
-    with open(os.path.join(opt.input_dir, 'img_id_dic.tsv'), "w") as f:
+    with open(os.path.join(opt.output_dir, 'img_id_dic.tsv'), "w") as f:
         writer = csv.writer(f, delimiter='\t')
         writer.writerow(['image_id', 'real_id'])
-        for key, val in img_id_dic.items():
-            writer.writerow([key, val])
-
+        
+        for key in img_id_dic.keys():
+            writer.writerow([key, img_id_dic[key]])
+            

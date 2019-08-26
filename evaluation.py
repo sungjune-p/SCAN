@@ -10,7 +10,6 @@
 
 from __future__ import print_function
 import os
-
 import sys
 from data import get_test_loader
 import time
@@ -22,6 +21,17 @@ from collections import OrderedDict
 import time
 from torch.autograd import Variable
 import nltk
+
+try:
+    torch._utils._rebuild_tensor_v2
+except AttributeError:
+    def _rebuild_tensor_v2(storage, storage_offset, size, stride, requires_grad, backward_hooks):
+        tensor = torch._utils._rebuild_tensor(storage, storage_offset, size, stride)
+        tensor.requires_grad = requires_grad
+        tensor._backward_hooks = backward_hooks
+        return tensor
+    torch._utils._rebuild_tensor_v2 = _rebuild_tensor_v2
+
 
 
 class AverageMeter(object):
@@ -101,7 +111,8 @@ def encode_data(model, target, batch_size):
     # cache embeddings
     cap_embs[0,:max(lengths),:] = cap_emb[0].data.cpu().numpy().copy()
 
-    cap_lens = cap_lens.data.cpu().numpy().copy()
+    # cap_lens = cap_lens.data.cpu().numpy().copy()
+    cap_lens = np.array(cap_lens).copy()
 
     return cap_embs, cap_lens
 
@@ -121,34 +132,49 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     if data_path is not None:
         opt.data_path = data_path
 
-    # load vocabulary used by the model
-    vocab = deserialize_vocab(os.path.join(opt.vocab_path, '%s_vocab.json' % opt.data_name))
-    opt.vocab_size = len(vocab)
-
     # construct model
     model = SCAN(opt)
 
     # load model state
     model.load_state_dict(checkpoint['model'])
 
+    # local dir   
+    opt.vocab_path = '/home/ivy/hard2/scan_data/vocab'
+    # docker dir
+    # opt.vocab_path = './data/vocab'
+    
+    # load vocabulary used by the model
+    vocab = deserialize_vocab(os.path.join(opt.vocab_path, '%s_vocab.json' % opt.data_name))
+    opt.vocab_size = len(vocab)
+    print("opt.vocab_size ", opt.vocab_size)
+
     print("Loading npy file")
     start_time = time.time()
-    img_embs = np.load('./out/img_embs.npy')
+    # local dir
+    img_embs = np.load('/home/ivy/hard2/scan_out/img_embs.npy')
+    # docker dir
+    # img_embs = np.load('./numpy_data/img_embs.npy')
     print("%s seconds takes to load npy file" %(time.time() - start_time))
 
     captions = []
-    captions.append(raw_input("Text Query : "))
+    captions.append(raw_input("Text Query :"))
+    print("captions", captions)
     tokens = nltk.tokenize.word_tokenize(
         str(captions).lower().decode('utf-8'))
     caption = []
     caption.append(vocab('<start>'))
     caption.extend([vocab(token) for token in tokens])
     caption.append(vocab('<end>'))
+    print("caption", caption)
+    print("len(caption)", len(caption))
     target = []
     for batch in range(opt.batch_size):
         target.append(caption)
+    # print("target", target)
+    # print("len(target)", len(target))
+    # print("type(target)", type(target))
     target = torch.Tensor(target).long()
-
+    # print("type(torch.target)", type(target))
 
     # print('Loading dataset')
     # data_loader = get_test_loader(split, opt.data_name, vocab,
@@ -158,6 +184,8 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     start_time = time.time()
     cap_embs, cap_len = encode_data(model, target, opt.batch_size)
     cap_lens = cap_len[0]
+    print("cap_lens", cap_lens)
+    print("cap_len", cap_len)
     print('cap_embs', type(cap_embs))
     print('cap_embs', cap_embs)
     print('cap_embs.shape', cap_embs.shape)
@@ -197,10 +225,14 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         top_3 = np.argsort(sims, axis=0)[-3:][::-1].flatten()
         top_5 = np.argsort(sims, axis=0)[-5:][::-1].flatten()
         top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
+        top_100 = np.argsort(sims, axis=0)[-100:][::-1].flatten()
 
         # print(top_10.shape)
         # print(type(top_10))
-        print('top 1 : ' + str(top_1), '\ntop 3 : ' + str(top_3), '\ntop 5 : ' + str(top_5), '\ntop 10 : ' + str(top_10))
+
+        # print('top 1 : ' + str(top_1), '\ntop 3 : ' + str(top_3), '\ntop 5 : ' + str(top_5), '\ntop 10 : ' + str(top_10))
+        print("top_100 : ", str(top_100))
+
         # print('Image #'+str(sims.argmax(axis=0)[0])+' with the biggest similarity score, '+str(np.max(sims)))
         # print(sims[int(sims.argmax(axis=0)[0])])
         # print("similarity : ", sims)
@@ -309,7 +341,7 @@ def shard_xattn_t2i(images, captions, caplens, opt, shard_size=128):
 
 
     n_im_shard = (len(images)-1)/shard_size + 1
-
+    print("bbbbbb", captions[0].shape)
     d = np.zeros((len(images), 1))
     for i in range(n_im_shard):
         im_start, im_end = shard_size*i, min(shard_size*(i+1), len(images))

@@ -412,9 +412,11 @@ class SCAN(object):
         captions = Variable(captions, volatile=volatile)
         if torch.cuda.is_available():
             captions = captions.cuda()
-
+            print("cuda?", torch.cuda.is_available())
+        print("forward_emb caption type", type(captions))
         # cap_emb (tensor), cap_lens (list)
         cap_emb, cap_lens = self.txt_enc(captions, lengths)
+        print("aaaaaaa", type(cap_emb), type(cap_lens))
         return cap_emb, cap_lens
 
 
