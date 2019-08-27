@@ -33,8 +33,6 @@ except AttributeError:
         return tensor
     torch._utils._rebuild_tensor_v2 = _rebuild_tensor_v2
 
-
-
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
@@ -147,7 +145,7 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     # load vocabulary used by the model
     vocab = deserialize_vocab(os.path.join(opt.vocab_path, '%s_vocab.json' % opt.data_name))
     opt.vocab_size = len(vocab)
-    print("opt.vocab_size ", opt.vocab_size)
+    # print("opt.vocab_size ", opt.vocab_size)
 
     print("Loading npy file")
     start_time = time.time()
@@ -159,15 +157,15 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
 
     captions = []
     captions.append(raw_input("Text Query :"))
-    print("captions", captions)
+    # print("captions", captions)
     tokens = nltk.tokenize.word_tokenize(
         str(captions).lower().decode('utf-8'))
     caption = []
     caption.append(vocab('<start>'))
     caption.extend([vocab(token) for token in tokens])
     caption.append(vocab('<end>'))
-    print("caption", caption)
-    print("len(caption)", len(caption))
+    # print("caption", caption)
+    # print("len(caption)", len(caption))
     target = []
     for batch in range(opt.batch_size):
         target.append(caption)
@@ -185,11 +183,11 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     start_time = time.time()
     cap_embs, cap_len = encode_data(model, target, opt.batch_size)
     cap_lens = cap_len[0]
-    print("cap_lens", cap_lens)
-    print("cap_len", cap_len)
-    print('cap_embs', type(cap_embs))
-    print('cap_embs', cap_embs)
-    print('cap_embs.shape', cap_embs.shape)
+    # print("cap_lens", cap_lens)
+    # print("cap_len", cap_len)
+    # print('cap_embs', type(cap_embs))
+    # print('cap_embs', cap_embs)
+    # print('cap_embs.shape', cap_embs.shape)
     print("%s seconds takes to calculate results" %(time.time() - start_time))
     # cap_embs.shape = (5000, 77, 1024)     cap_lens : # of words per each caption (tensor) (It contains <start>:1 and <end>:2)
     # start_time = time.time()
@@ -226,15 +224,15 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         # top_3 = np.argsort(sims, axis=0)[-3:][::-1].flatten()
         # top_5 = np.argsort(sims, axis=0)[-5:][::-1].flatten()
         # top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
-        top_100 = np.argsort(sims, axis=0)[-100:][::-1].flatten()
-
+        top_1000 = np.argsort(sims, axis=0)[-1000:][::-1].flatten()
+        final_result = list(top_1000)
 
 
         # print(top_10.shape)
         # print(type(top_10))
 
         # print('top 1 : ' + str(top_1), '\ntop 3 : ' + str(top_3), '\ntop 5 : ' + str(top_5), '\ntop 10 : ' + str(top_10))
-        print("top_100 : ", str(top_100))
+        # print("top_100 : ", str(top_100))
 
         # print('Image #'+str(sims.argmax(axis=0)[0])+' with the biggest similarity score, '+str(np.max(sims)))
         # print(sims[int(sims.argmax(axis=0)[0])])
@@ -304,7 +302,7 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         #       mean_metrics[5:10])
 
     # torch.save({'rt': rt, 'rti': rti}, 'ranks.pth.tar')
-
+    return final_result
 
 def softmax(X, axis):
     """
