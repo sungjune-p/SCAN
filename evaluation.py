@@ -116,7 +116,7 @@ def encode_data(model, target, batch_size):
     return cap_embs, cap_lens
 
 
-def evalrank(model_path, data_path=None, split='dev', fold5=False):
+def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fold5=False):
     """
     Evaluate a trained model on either dev or test. If `fold5=True`, 5 fold
     cross-validation is done (only for MSCOCO). Otherwise, the full data is
@@ -156,7 +156,7 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     print("%s seconds takes to load npy file" %(time.time() - start_time))
 
     captions = []
-    captions.append(raw_input("Text Query :"))
+    captions.append(input_string)
     # print("captions", captions)
     tokens = nltk.tokenize.word_tokenize(
         str(captions).lower().decode('utf-8'))
@@ -224,8 +224,8 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         # top_3 = np.argsort(sims, axis=0)[-3:][::-1].flatten()
         # top_5 = np.argsort(sims, axis=0)[-5:][::-1].flatten()
         # top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
-        top_1000 = np.argsort(sims, axis=0)[-1000:][::-1].flatten()
-        final_result = list(top_1000)
+        top_n = np.argsort(sims, axis=0)[-(how_many):][::-1].flatten()
+        final_result = list(top_n)
 
 
         # print(top_10.shape)
