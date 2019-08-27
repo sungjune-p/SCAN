@@ -22,6 +22,7 @@ import time
 from torch.autograd import Variable
 import nltk
 
+
 try:
     torch._utils._rebuild_tensor_v2
 except AttributeError:
@@ -139,9 +140,9 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     model.load_state_dict(checkpoint['model'])
 
     # local dir   
-    opt.vocab_path = '/home/ivy/hard2/scan_data/vocab'
+    # opt.vocab_path = '/home/ivy/hard2/scan_data/vocab'
     # docker dir
-    # opt.vocab_path = './data/vocab'
+    opt.vocab_path = './data/vocab'
     
     # load vocabulary used by the model
     vocab = deserialize_vocab(os.path.join(opt.vocab_path, '%s_vocab.json' % opt.data_name))
@@ -151,9 +152,9 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
     print("Loading npy file")
     start_time = time.time()
     # local dir
-    img_embs = np.load('/home/ivy/hard2/scan_out/img_embs.npy')
+    # img_embs = np.load('/home/ivy/hard2/scan_out/img_embs.npy')
     # docker dir
-    # img_embs = np.load('./numpy_data/img_embs.npy')
+    img_embs = np.load('./numpy_data/img_embs.npy')
     print("%s seconds takes to load npy file" %(time.time() - start_time))
 
     captions = []
@@ -221,11 +222,13 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
         end = time.time()
         print("calculate similarity time:", end-start)
 
-        top_1 = np.argsort(sims, axis=0)[-1:].flatten()
-        top_3 = np.argsort(sims, axis=0)[-3:][::-1].flatten()
-        top_5 = np.argsort(sims, axis=0)[-5:][::-1].flatten()
-        top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
+        # top_1 = np.argsort(sims, axis=0)[-1:].flatten()
+        # top_3 = np.argsort(sims, axis=0)[-3:][::-1].flatten()
+        # top_5 = np.argsort(sims, axis=0)[-5:][::-1].flatten()
+        # top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
         top_100 = np.argsort(sims, axis=0)[-100:][::-1].flatten()
+
+
 
         # print(top_10.shape)
         # print(type(top_10))
@@ -255,9 +258,11 @@ def evalrank(model_path, data_path=None, split='dev', fold5=False):
 
     else:
         # 5fold cross-validation, only for MSCOCO
-        results = []
-        for i in range(5):
-            img_embs_shard = img_embs[i * 5000:(i + 1) * 5000:5]
+        for i in range(10):
+            if i < 9:
+                img_embs_shard = img_embs[i * (img_embs.shape[0]//10):(i+1) * (img_embs.shape[0]//10)]
+            else:
+                img_embs_shard = img_embs[i * (img_embs.shape[0]//10):]
             cap_embs_shard = cap_embs
             cap_lens_shard = cap_lens
             start = time.time()
