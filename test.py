@@ -9,7 +9,11 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def execute(input_string, n=1000):
     final_top_n = eval.evalrank(input_string, n, "runs/coco_scan/log/model_best.pth.tar", data_path="./data", split="test", fold5=False)
-    return final_top_n
+    
+    s = json.dumps(final_top_n)
+    requests.post("http:/127.0.0.1/5000/getScanResult/", json=s)
+    
+
 
 
 
