@@ -2,6 +2,7 @@ from vocab import Vocabulary
 import evaluation as eval
 import os
 import time
+import json
 
 # Allocate GPUs
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -10,8 +11,10 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 def execute(input_string, n=1000):
     final_top_n = eval.evalrank(input_string, n, "runs/coco_scan/log/model_best.pth.tar", data_path="./data", split="test", fold5=False)
     
-    s = json.dumps(final_top_n)
-    requests.post("http:/127.0.0.1/5000/getScanResult/", json=s)
+    ids = dict(result = None)
+    ids['result'] = final_top_n
+    jsonFile = json.dumps(ids)
+    requests.post("http://localhost:5000/getScanResult", data={'Results': jsonFile})
     
 
 
