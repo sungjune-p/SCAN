@@ -140,7 +140,7 @@ def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fo
     # local dir   
     # opt.vocab_path = '/home/ivy/hard2/scan_data/vocab'
     # docker dir
-    opt.vocab_path = './data/vocab'
+    opt.vocab_path = '/scan/SCAN/data/vocab'
     
     # load vocabulary used by the model
     vocab = deserialize_vocab(os.path.join(opt.vocab_path, '%s_vocab.json' % opt.data_name))
@@ -152,7 +152,7 @@ def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fo
     # local dir
     # img_embs = np.load('/home/ivy/hard2/scan_out/img_embs.npy')
     # docker dir
-    img_embs = np.load('./numpy_data/img_embs.npy')
+    img_embs = np.load('/scan/SCAN/numpy_data/img_embs.npy')
     print("%s seconds takes to load npy file" %(time.time() - start_time))
 
     captions = []

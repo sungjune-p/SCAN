@@ -4,13 +4,13 @@ from flask_cors import CORS, cross_origin
 
 import json
 import logging
-# import sys
-# sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
-# import test
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+import scan_test
 
 
 app = Flask(__name__)
-cors = CORS(app, resources={r"/*": {"origins": "http://localhost:5000"}})
+cors = CORS(app, resources={r"/*": {"origins": "http://localhost:4444"}})
 # api = Api(app=app)
 # ns = api.namespace('vbs', description='design vbs web')
 
@@ -23,14 +23,13 @@ def getString():
         current_app.logger.info("Get string succesfully from flask 5000")
         current_app.logger.info(string)
         
-        a = [1, 2, 3, 4, 5, 6]
-        result = dict(output = None)
-        result['output'] = a
-        jsonFile = json.dumps(result)
-        request.post("http://localhost:5000/getScanResult", data={'Results': jsonFile})
-#    test.execute(string)
-
-    return "Good to go"
+        A = scan_test.execute(string)
+        current_app.logger.info(A)
+        jsonFile = jsonify(A)
+	
+        return jsonFile
+    else:
+        return "failed"
 
 
 if __name__ == "__main__":
