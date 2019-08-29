@@ -156,7 +156,7 @@ def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fo
     print("%s seconds takes to load npy file" %(time.time() - start_time))
 
     captions = []
-    captions.append(input_string)
+    captions.append(str(input_string))
     # print("captions", captions)
     tokens = nltk.tokenize.word_tokenize(
         str(captions).lower().decode('utf-8'))
