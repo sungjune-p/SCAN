@@ -116,7 +116,7 @@ def encode_data(model, target, batch_size):
     return cap_embs, cap_lens
 
 
-def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fold5=False, gpu_num=None):
+def evalrank(input_string, img_feature, how_many, model_path, data_path=None, split='dev', fold5=False, gpu_num=None):
     """
     Evaluate a trained model on either dev or test. If `fold5=True`, 5 fold
     cross-validation is done (only for MSCOCO). Otherwise, the full data is
@@ -151,8 +151,9 @@ def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fo
     start_time = time.time()
     # local dir
     # img_embs = np.load('/home/ivy/hard2/scan_out/img_embs.npy')
+    img_embs = img_feature
     # docker dir
-    img_embs = np.load('/scan/SCAN/numpy_data/img_embs_%d.npy' %(gpu_num+1))
+#img_embs = np.load('/scan/SCAN/numpy_data/img_embs.npy')
     print("%s seconds takes to load npy file" %(time.time() - start_time))
 
     captions = []

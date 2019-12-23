@@ -13,6 +13,7 @@ app = Flask(__name__)
 cors = CORS(app, resources={r"/*": {"origins": "http://localhost:4444"}})
 # api = Api(app=app)
 # ns = api.namespace('vbs', description='design vbs web')
+img_embs = np.load('/mnt/hard2/DB_DATA/scan_out/img_embs_1.npy')
 
 
 @app.route('/getString', methods=['POST'])
@@ -23,7 +24,7 @@ def getString():
         current_app.logger.info("Get string succesfully from flask 5000")
         current_app.logger.info(string)
         
-        A = scan_test.execute(string)
+        A = scan_test.execute(string, img_embs)
         current_app.logger.info(A)
         jsonFile = jsonify(A)
 	

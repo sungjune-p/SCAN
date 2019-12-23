@@ -9,10 +9,9 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 def execute(input_string, n=1000):
-    final_top_n = eval.evalrank(input_string, n, "/scan/SCAN/runs/coco_scan/log/model_best.pth.tar", data_path="/scan/SCAN/data", split="test", fold5=False, gpu_num="0")
+    final_top_n = eval.evalrank(input_string, img_feature, n, "/scan/SCAN/runs/coco_scan/log/model_best.pth.tar", data_path="/scan/SCAN/data", split="test", fold5=False)
     
     return final_top_n
-
 
 
 # if __name__ == '__main__':
