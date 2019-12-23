@@ -37,57 +37,69 @@ if __name__ == '__main__':
     csv.field_size_limit(sys.maxsize)
     FIELDNAMES = ['image_id', 'image_w', 'image_h', 'num_boxes', 'boxes', 'features']
     # input_file = os.path.join(opt.input_dir, 'merged_out.tsv')
-    input_file = opt.input_dir
 
-    with open(input_file, "r+b") as tsv_in_file:
-        reader = csv.DictReader(tsv_in_file, delimiter='\t', fieldnames = FIELDNAMES)
-        count = 0
-        img_id_dic = {}
-        feature = {}
-        for item in reader:
-            # item['image_id'] = item['image_id']
-            # print('a', item['image_id'])
-            img_id_dic[count] = item['image_id']
-            item['image_h'] = int(item['image_h'])
-            item['image_w'] = int(item['image_w'])
-            item['num_boxes'] = int(item['num_boxes'])
-            # print('aa', np.array(item['features'], dtype=np.float32).shape)
-            # print('aaa', type(item['boxes']))
-            for field in ['boxes', 'features']:
-                data = item[field]
-                # print('data',data.shape)
-                buf = base64.decodestring(data)
-                # print('buf',buf.shape)
-                temp = np.frombuffer(buf, dtype=np.float32)
-                # print('temp',type(temp))
-                item[field] = temp.reshape((item['num_boxes'],-1))
-                # print('item[num_boxes]',item['num_boxes'])
-                # print('item[boxes]',item['boxes'].shape)
-                # print('item[features]',item['features'].shape)
-            # if item['image_id'] in feature:
-            #     feature[item['image_id']] = item['features']
-            feature[count] = item['features']
-            # print('hi', item['features'].shape)
+    tsv_list = os.listdir(opt.input_dir)
+    tsv_list.sort()
+    tsv_list = tsv_list[7:8]
+    # print('tsv_list', tsv_list)
 
-            if count % 100 == 0:
-                print("Process %d images" %(count+1))
-                # print('b',item['image_id'])
-                # print('c',item['image_h'])
-                # print('d',item['image_w'])
-                # print('e',item['num_boxes'])
-                # print('f',type(item['features']))
-                # print('ff',item['features'].shape)
-            count += 1
+    for tsv_file in tsv_list:
+        input_file = os.path.join(opt.input_dir, tsv_file)
+        print('input_file', input_file)
+        print('Check Numbering', tsv_file.split('_')[1][0])
+        print("Processing %s" % (tsv_file))
+        numbering = tsv_file.split('_')[1][0]
+    # input_file = opt.input_dir
 
-    # data_out = np.stack([feature[sid] for sid in meta], axis=0)
-    data_out = np.stack([feature[num] for num in range(count)], axis=0)
-    print("Final numpy array shape:", data_out.shape)
-    np.save(os.path.join(opt.output_dir, '{}_ims.npy'.format(opt.split)), data_out)
+        with open(input_file, "r+b") as tsv_in_file:
+            reader = csv.DictReader(tsv_in_file, delimiter='\t', fieldnames = FIELDNAMES)
+            count = 0
+            img_id_dic = {}
+            feature = {}
+            for item in reader:
+                # item['image_id'] = item['image_id']
+                # print('a', item['image_id'])
+                img_id_dic[count] = item['image_id']
+                item['image_h'] = int(item['image_h'])
+                item['image_w'] = int(item['image_w'])
+                item['num_boxes'] = int(item['num_boxes'])
+                # print('aa', np.array(item['features'], dtype=np.float32).shape)
+                # print('aaa', type(item['boxes']))
+                for field in ['boxes', 'features']:
+                    data = item[field]
+                    # print('data',data.shape)
+                    buf = base64.decodestring(data)
+                    # print('buf',buf.shape)
+                    temp = np.frombuffer(buf, dtype=np.float32)
+                    # print('temp',type(temp))
+                    item[field] = temp.reshape((item['num_boxes'],-1))
+                    # print('item[num_boxes]',item['num_boxes'])
+                    # print('item[boxes]',item['boxes'].shape)
+                    # print('item[features]',item['features'].shape)
+                # if item['image_id'] in feature:
+                #     feature[item['image_id']] = item['features']
+                feature[count] = item['features']
+                # print('hi', item['features'].shape)
 
-    with open(os.path.join(opt.output_dir, 'img_id_dic.tsv'), "w") as f:
-        writer = csv.writer(f, delimiter='\t')
-        writer.writerow(['image_id', 'real_id'])
-        
-        for key in img_id_dic.keys():
-            writer.writerow([key, img_id_dic[key]])
+                if count % 100 == 0:
+                    print("Process %d images" %(count+1))
+                    # print('b',item['image_id'])
+                    # print('c',item['image_h'])
+                    # print('d',item['image_w'])
+                    # print('e',item['num_boxes'])
+                    # print('f',type(item['features']))
+                    # print('ff',item['features'].shape)
+                count += 1
+
+        # data_out = np.stack([feature[sid] for sid in meta], axis=0)
+        data_out = np.stack([feature[num] for num in range(count)], axis=0)
+        print("Final numpy array shape:", data_out.shape)
+        np.save(os.path.join(opt.output_dir, '{}_ims_{}.npy'.format(opt.split, numbering)), data_out)
+
+        with open(os.path.join(opt.output_dir, 'img_id_dic_{}.tsv'.format(numbering)), "w") as f:
+            writer = csv.writer(f, delimiter='\t')
+            writer.writerow(['image_id', 'real_id'])
+
+            for key in img_id_dic.keys():
+                writer.writerow([key, img_id_dic[key]])
             

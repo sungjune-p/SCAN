@@ -60,7 +60,7 @@ class PrecompDataset():
 
     def __init__(self):
 
-        self.images = np.load('/home/ivy/hard2/scan_out/test_ims.npy')
+        self.images = np.load('/home/ivy/hard2/scan_convert_out/test_ims_8.npy')
         print('# of images : ', self.images.shape[0])
 
         self.length = self.images.shape[0]
@@ -276,4 +276,4 @@ if __name__ == '__main__':
     img_embs = encode_data(model, data_loader)
     print('img_embs[0][0]\n', img_embs[0][0])
     print('Final numpy shape : ', img_embs.shape)
-    np.save(os.path.join('/mnt/hard2/scan_out', 'img_embs.npy'), img_embs)
+    np.save(os.path.join('/mnt/hard2/scan_out', 'img_embs_8.npy'), img_embs)
