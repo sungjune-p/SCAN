@@ -116,7 +116,7 @@ def encode_data(model, target, batch_size):
     return cap_embs, cap_lens
 
 
-def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fold5=False):
+def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fold5=False, gpu_num=None):
     """
     Evaluate a trained model on either dev or test. If `fold5=True`, 5 fold
     cross-validation is done (only for MSCOCO). Otherwise, the full data is
@@ -152,63 +152,33 @@ def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fo
     # local dir
     # img_embs = np.load('/home/ivy/hard2/scan_out/img_embs.npy')
     # docker dir
-    img_embs = np.load('/scan/SCAN/numpy_data/img_embs.npy')
+    img_embs = np.load('/scan/SCAN/numpy_data/img_embs_%d.npy' %(gpu_num+1))
     print("%s seconds takes to load npy file" %(time.time() - start_time))
 
     captions = []
     captions.append(str(input_string))
-    # print("captions", captions)
     tokens = nltk.tokenize.word_tokenize(
         str(captions).lower().decode('utf-8'))
     caption = []
     caption.append(vocab('<start>'))
     caption.extend([vocab(token) for token in tokens])
     caption.append(vocab('<end>'))
-    # print("caption", caption)
-    # print("len(caption)", len(caption))
     target = []
     for batch in range(opt.batch_size):
         target.append(caption)
-    # print("target", target)
-    # print("len(target)", len(target))
-    # print("type(target)", type(target))
     target = torch.Tensor(target).long()
-    # print("type(torch.target)", type(target))
-
-    # print('Loading dataset')
-    # data_loader = get_test_loader(split, opt.data_name, vocab,
-    #                               opt.batch_size, opt.workers, opt)
 
     print('Calculating results...')
     start_time = time.time()
     cap_embs, cap_len = encode_data(model, target, opt.batch_size)
     cap_lens = cap_len[0]
-    # print("cap_lens", cap_lens)
-    # print("cap_len", cap_len)
-    # print('cap_embs', type(cap_embs))
-    # print('cap_embs', cap_embs)
-    # print('cap_embs.shape', cap_embs.shape)
     print("%s seconds takes to calculate results" %(time.time() - start_time))
-    # cap_embs.shape = (5000, 77, 1024)     cap_lens : # of words per each caption (tensor) (It contains <start>:1 and <end>:2)
-    # start_time = time.time()
-    # img_embs, cap_embs, cap_lens = encode_data(model, data_loader)
-    # print("img_embs[0][0]", img_embs[0][0])
-    # print("img_embs.shape", img_embs.shape)
-    # print("%s seconds taken to calculate results" %(time.time() - start_time))
-    # print("image_embs.shape : ", img_embs.shape)      img_embs.shape = (# of images, 36, 1024)
-    # print("cap_embs : ", cap_embs.shape)
-    # cap_embs.shape : (5000, 8, 1024)  ( 8 = caption max length )
     print("Caption length with start and end index : ", cap_lens)
-
-    # print('Images: %d, Captions: %d' %
-    #       (img_embs.shape[0] / 5, cap_embs.shape[0]))
     print('Images: %d, Captions: %d' %
            (img_embs.shape[0], cap_embs.shape[0]))
 
 
     if not fold5:
-        # no cross-validation, full evaluation
-        # img_embs = np.array([img_embs[i] for i in range(0, len(img_embs), 5)])
         img_embs = np.array(img_embs)
         start = time.time()
         if opt.cross_attn == 't2i':
@@ -220,42 +190,12 @@ def evalrank(input_string, how_many, model_path, data_path=None, split='dev', fo
         end = time.time()
         print("calculate similarity time:", end-start)
 
-        # top_1 = np.argsort(sims, axis=0)[-1:].flatten()
-        # top_3 = np.argsort(sims, axis=0)[-3:][::-1].flatten()
-        # top_5 = np.argsort(sims, axis=0)[-5:][::-1].flatten()
         # top_10 = np.argsort(sims, axis=0)[-10:][::-1].flatten()
         top_n = np.argsort(sims, axis=0)[-(how_many):][::-1].flatten()
         final_result = list(top_n)
 
-
-        # print(top_10.shape)
-        # print(type(top_10))
-
-        # print('top 1 : ' + str(top_1), '\ntop 3 : ' + str(top_3), '\ntop 5 : ' + str(top_5), '\ntop 10 : ' + str(top_10))
-        # print("top_100 : ", str(top_100))
-
-        # print('Image #'+str(sims.argmax(axis=0)[0])+' with the biggest similarity score, '+str(np.max(sims)))
-        # print(sims[int(sims.argmax(axis=0)[0])])
-        # print("similarity : ", sims)
-        # print("sim shape : ", sims.shape)
-        # r, rt = i2t(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
-        # ri, rti = t2i(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
-        # ar = (r[0] + r[1] + r[2]) / 3
-        # ari = (ri[0] + ri[1] + ri[2]) / 3
-        # rsum = r[0] + r[1] + r[2] + ri[0] + ri[1] + ri[2]
-        # print("rsum: %.1f" % rsum)
-        # print("Average i2t Recall: %.1f" % ar)
-        # print("Image to text: %.1f %.1f %.1f %.1f %.1f" % r)
-        # print("Average t2i Recall: %.1f" % ari)
-        # print("Text to image: %.1f %.1f %.1f %.1f %.1f" % ri)
-        # t = i2t(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
-        #ti = t2i(img_embs, cap_embs, cap_lens, sims, return_ranks=True)
-
-        # print("i2t top1", t)
-        #print("t2i top1", ti)
-
-    else:
         # 5fold cross-validation, only for MSCOCO
+    else:
         for i in range(10):
             if i < 9:
                 img_embs_shard = img_embs[i * (img_embs.shape[0]//10):(i+1) * (img_embs.shape[0]//10)]
